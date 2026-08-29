@@ -60,7 +60,7 @@ export const CareerAssistantView: React.FC = () => {
         };
       }
 
-      const response = await fetch('/api/gemini/career-match', {
+      const response = await fetch('/api/OpenAi/career-match', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

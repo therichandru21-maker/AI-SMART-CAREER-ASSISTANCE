@@ -42,7 +42,7 @@ Date: Yesterday at 2:00 PM EST
 
 Priya: Thanks everyone for joining. We have 10 days until our public beta rollout for the AI Smart Assistant dashboard. Marcus, can you give us an update on the backend API latency?
 
-Marcus: Sure. We migrated our inference proxy to the Gemini 3.7 Flash model via Google GenAI SDK. Response times for the document summarizer endpoint are hovering around 320ms, and structured JSON entity extraction is taking under 500ms. We set up user-agent telemetry headers and wrapped error handling with exponential backoff.
+Marcus: Sure. We migrated our inference proxy to the OpenAi 3.7 Flash model via Google GenAI SDK. Response times for the document summarizer endpoint are hovering around 320ms, and structured JSON entity extraction is taking under 500ms. We set up user-agent telemetry headers and wrapped error handling with exponential backoff.
 
 Liam: On the client side, I've implemented the tabbed workspace with Framer Motion transitions. The markdown renderer handles tables, syntax highlighting, and copy-to-clipboard actions cleanly. I still need to wire up the drag-and-drop file upload zone and the sentiment visualization gauge.
 
@@ -95,10 +95,10 @@ Vanguard Global Logistics`,
     text: `SYSTEM ARCHITECTURE SPECIFICATION: AI SMART ASSISTANT ENTERPRISE GATEWAY
 
 1. System Architecture Overview
-The system employs a high-concurrency Node.js / Express reverse proxy architecture integrated with Vite client rendering and Google's Gemini generative intelligence backbone. 
+The system employs a high-concurrency Node.js / Express reverse proxy architecture integrated with Vite client rendering and Google's OpenAi generative intelligence backbone. 
 
 2. Security & Credential Isolation
-- API Token Protection: All generative AI credentials are securely encapsulated within server-side environment parameters (process.env.GEMINI_API_KEY). No API secrets or model headers are ever exposed to the client bundle.
+- API Token Protection: All generative AI credentials are securely encapsulated within server-side environment parameters (process.env.OpenAi_API_KEY). No API secrets or model headers are ever exposed to the client bundle.
 - Request Validation: Inbound payloads undergo schema validation using TypeScript typing. Malformed JSON or oversized multipart payloads (>10MB) are rejected with HTTP 413 Payload Too Large.
 - Sanitization: All AI-generated markdown strings pass through safe HTML parsers with script-injection safeguards.
 

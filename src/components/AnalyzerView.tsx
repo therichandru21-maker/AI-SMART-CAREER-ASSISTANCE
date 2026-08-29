@@ -52,7 +52,7 @@ export const AnalyzerView: React.FC<AnalyzerViewProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/gemini/analyze', {
+      const res = await fetch('/api/OpenAi/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -252,7 +252,7 @@ export const AnalyzerView: React.FC<AnalyzerViewProps> = ({
             <div className="bg-white dark:bg-slate-900 rounded-xl p-8 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4 min-h-[420px] flex flex-col justify-center transition-colors">
               <div className="flex items-center space-x-3 text-indigo-600 dark:text-indigo-400">
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span className="text-xs font-semibold tracking-wide uppercase">Inspecting linguistic structure with Gemini...</span>
+                <span className="text-xs font-semibold tracking-wide uppercase">Inspecting linguistic structure with OpenAI...</span>
               </div>
               <div className="space-y-3 animate-pulse">
                 <div className="grid grid-cols-3 gap-3">

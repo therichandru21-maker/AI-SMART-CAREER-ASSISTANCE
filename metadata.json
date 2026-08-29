@@ -2,5 +2,5 @@
   "name": "AI Smart Assistant",
   "description": "An AI Smart Assistant for productivity — featuring intelligent text summarization, document analysis, multi-format content generation, deep Q&A, and smart suggestions.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_OpenAi_API"]
 }

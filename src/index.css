@@ -27,9 +27,32 @@
     --accent-subtle: rgba(99, 102, 241, 0.15);
   }
 
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0;
+    overflow-x: hidden;
+  }
+
   body {
     background-color: var(--bg-canvas);
     color: var(--text-primary);
     transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .prose {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .prose pre,
+  .prose table {
+    max-width: 100%;
+    overflow-x: auto;
   }
 }

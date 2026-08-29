@@ -57,7 +57,7 @@ export async function extractCareerFile(file: { name: string; mimeType: string; 
     return chunks.join("").slice(0, MAX_PROJECT_TEXT_SIZE);
   }
 
-  // PDFs are handled by Gemini as a native document part.
+  // PDFs are handled by OpenAi as a native document part.
   if (lower.endsWith(".pdf")) return "";
 
   return bytes.toString("utf8").trim();

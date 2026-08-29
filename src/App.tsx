@@ -9,7 +9,6 @@ import { ChatAssistantView } from './components/ChatAssistantView';
 import { QuickTransformView } from './components/QuickTransformView';
 import { CareerAssistantView } from './components/CareerAssistantView';
 import { DocumentationModal } from './components/DocumentationModal';
-import { Sparkles, Heart, Shield, Cpu, ExternalLink } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('summarizer');
@@ -36,9 +35,12 @@ export default function App() {
   const handleLoadSample = (sample: SampleDocument) => {
     setActiveTab(sample.targetTab);
     setActiveInitialText(sample.text);
+
     if (sample.targetTab === 'chat') {
       setChatInitialContext(sample.text);
-      setChatInitialQuestion('Summarize the key decisions and deliverables from this document.');
+      setChatInitialQuestion(
+        'Summarize the key decisions and deliverables from this document.'
+      );
     }
   };
 
@@ -49,7 +51,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090D16] flex flex-col font-sans text-slate-800 dark:text-slate-200 antialiased selection:bg-indigo-500 selection:text-white transition-colors">
+    <div className="min-h-screen w-full min-w-0 overflow-x-hidden bg-[#F8FAFC] dark:bg-[#090D16] flex flex-col font-sans text-slate-800 dark:text-slate-200 antialiased selection:bg-indigo-500 selection:text-white transition-colors">
       {/* Navigation Bar */}
       <Navbar
         activeTab={activeTab}
@@ -63,7 +65,7 @@ export default function App() {
       />
 
       {/* Main Workspace Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main className="flex-1 w-full min-w-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {activeTab === 'summarizer' && (
           <SummarizerView
             key={`sum-${activeInitialText.substring(0, 10)}`}
@@ -111,7 +113,11 @@ export default function App() {
             <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
             <span>API: Secure (Server-Side Isolated)</span>
           </div>
-          <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
+
+          <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">
+            •
+          </span>
+
           <div className="hidden sm:flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
             <span className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full"></span>
             <span>Innovation Hacks AI Internship 2026</span>
@@ -125,7 +131,11 @@ export default function App() {
           >
             Project Specifications
           </button>
-          <span className="text-slate-300 dark:text-slate-700">•</span>
+
+          <span className="text-slate-300 dark:text-slate-700">
+            •
+          </span>
+
           <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest hidden md:inline">
             Week 01 Project — SmartAssist AI
           </span>

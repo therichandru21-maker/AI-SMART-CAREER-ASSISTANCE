@@ -16,9 +16,9 @@ export const DocumentationModal: React.FC<DocumentationModalProps> = ({ isOpen, 
     { name: 'Text / Document Analysis', status: 'Implemented', detail: 'Sentiment score meter, tone detector, readability index, entity explorer & action items' },
     { name: 'Intelligent Suggestions', status: 'Implemented', detail: 'Smart follow-up questions, proactive next steps & delivery tips' },
     { name: 'Functional User Interface', status: 'Implemented', detail: 'Responsive desktop/mobile workspace with real-time stats & markdown rendering' },
-    { name: 'AI API Integration', status: 'Implemented', detail: 'Google GenAI SDK with Gemini 3.7 Flash model via Express backend' },
+    { name: 'AI API Integration', status: 'Implemented', detail: 'Google GenAI SDK with OpenAi 3.7 Flash model via Express backend' },
     { name: 'Proper Error Handling', status: 'Implemented', detail: 'Structured error messages, loading spinners & graceful fallbacks' },
-    { name: 'Secure API Key Handling', status: 'Implemented', detail: 'Server-side process.env.GEMINI_API_KEY with zero client token exposure' },
+    { name: 'Secure API Key Handling', status: 'Implemented', detail: 'Server-side process.env.OpenAi_API_KEY with zero client token exposure' },
     { name: 'Clean Project Structure', status: 'Implemented', detail: 'Modular TypeScript components, typed interfaces, and separated data' },
   ];
 
@@ -67,7 +67,7 @@ export const DocumentationModal: React.FC<DocumentationModalProps> = ({ isOpen, 
               </div>
               <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
                 <div className="font-semibold text-slate-800 mb-1">AI Intelligence</div>
-                <p className="text-slate-500 text-[11px] leading-normal">Google GenAI SDK with Gemini 3.7 Flash using deterministic JSON schemas.</p>
+                <p className="text-slate-500 text-[11px] leading-normal">Google GenAI SDK with OpenAi 3.7 Flash using deterministic JSON schemas.</p>
               </div>
             </div>
           </div>
@@ -97,7 +97,7 @@ export const DocumentationModal: React.FC<DocumentationModalProps> = ({ isOpen, 
               <span>Secure Server-Side API Key Handling</span>
             </div>
             <p className="text-[11px] text-slate-300 leading-relaxed">
-              All Gemini API operations run exclusively on the Express backend via <code className="text-indigo-200 bg-slate-800 px-1 py-0.5 rounded font-mono text-[10px]">process.env.GEMINI_API_KEY</code>. The client browser communicates only via secure JSON endpoints (<code className="text-indigo-200 font-mono text-[10px]">/api/gemini/*</code>) and never receives access to private keys or authorization headers.
+              All OpenAi API operations run exclusively on the Express backend via <code className="text-indigo-200 bg-slate-800 px-1 py-0.5 rounded font-mono text-[10px]">process.env.OpenAi_API_KEY</code>. The client browser communicates only via secure JSON endpoints (<code className="text-indigo-200 font-mono text-[10px]">/api/OpenAi/*</code>) and never receives access to private keys or authorization headers.
             </p>
           </div>
         </div>

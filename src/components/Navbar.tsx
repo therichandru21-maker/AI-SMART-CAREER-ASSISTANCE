@@ -1,11 +1,11 @@
 import React from 'react';
-import { 
-  FileText, 
-  Search, 
-  PenTool, 
-  MessageSquare, 
-  Zap, 
-  FolderOpen, 
+import {
+  FileText,
+  Search,
+  PenTool,
+  MessageSquare,
+  Zap,
+  FolderOpen,
   BookOpen,
   BriefcaseBusiness
 } from 'lucide-react';
@@ -29,39 +29,82 @@ export const Navbar: React.FC<NavbarProps> = ({
   isApiHealthy,
 }) => {
   const tabs = [
-    { id: 'summarizer' as ActiveTab, label: 'Text Summarization', icon: FileText },
-    { id: 'analyzer' as ActiveTab, label: 'Document Analysis', icon: Search },
-    { id: 'generator' as ActiveTab, label: 'Content Generation', icon: PenTool },
-    { id: 'chat' as ActiveTab, label: 'Question Answering', icon: MessageSquare },
-    { id: 'quick-tools' as ActiveTab, label: 'Quick Tools', icon: Zap },
-    { id: 'career' as ActiveTab, label: 'Career Assistant', icon: BriefcaseBusiness },
+    {
+      id: 'summarizer' as ActiveTab,
+      label: 'Text Summarization',
+      icon: FileText
+    },
+    {
+      id: 'analyzer' as ActiveTab,
+      label: 'Document Analysis',
+      icon: Search
+    },
+    {
+      id: 'generator' as ActiveTab,
+      label: 'Content Generation',
+      icon: PenTool
+    },
+    {
+      id: 'chat' as ActiveTab,
+      label: 'Question Answering',
+      icon: MessageSquare
+    },
+    {
+      id: 'quick-tools' as ActiveTab,
+      label: 'Quick Tools',
+      icon: Zap
+    },
+    {
+      id: 'career' as ActiveTab,
+      label: 'Career Assistant',
+      icon: BriefcaseBusiness
+    },
   ];
 
   return (
-    <header id="app-header" className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 shadow-xs transition-colors">
+    <header
+      id="app-header"
+      className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 shadow-xs transition-colors"
+    >
       {/* Top Main Navigation Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-8">
         <div className="flex items-center justify-between h-16">
+
           {/* Logo & Branding */}
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-xs">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              <svg
+                className="w-5 h-5 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
               </svg>
             </div>
+
             <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white">
-              SmartAssist <span className="text-indigo-600 dark:text-indigo-400">AI</span>
+              SmartAssist{' '}
+              <span className="text-indigo-600 dark:text-indigo-400">
+                AI
+              </span>
             </span>
           </div>
 
           {/* Right Status Badges & Action Controls */}
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Gemini Live Status Pill */}
+
+            {/* OpenAi Live Status Pill */}
             <div className="hidden sm:flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full text-xs font-medium text-slate-600 dark:text-slate-300">
               {isApiHealthy ? (
                 <>
                   <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                  <span>gemini-3.7-flash Connected</span>
+                  <span>OpenAi Connected</span>
                 </>
               ) : (
                 <>
@@ -86,6 +129,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800">
                   Quick-Load Presets
                 </div>
+
                 {SAMPLE_DOCUMENTS.map((sample) => (
                   <button
                     key={sample.id}
@@ -95,9 +139,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <span className="font-semibold text-slate-900 dark:text-white flex items-center justify-between">
                       {sample.title}
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 capitalize font-medium">{sample.category}</span>
+
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 capitalize font-medium">
+                        {sample.category}
+                      </span>
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{sample.description}</span>
+
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                      {sample.description}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -133,6 +183,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
+
             return (
               <button
                 key={tab.id}
@@ -144,7 +195,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 font-medium'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                <Icon
+                  className={`w-4 h-4 ${
+                    isActive
+                      ? 'text-indigo-600 dark:text-indigo-400'
+                      : 'text-slate-400'
+                  }`}
+                />
+
                 <span>{tab.label}</span>
               </button>
             );
@@ -154,4 +212,3 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
-

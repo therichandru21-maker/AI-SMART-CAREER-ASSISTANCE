@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
+import OpenAI from "openai";
 import dotenv from "dotenv";
 import { extractCareerFile, extractProjectEvidence } from "./careerAssistant.js";
 
@@ -10,44 +10,55 @@ dotenv.config();
 const app = express();
 const PORT = 8080;
 const HOSTNAME = "smartassistai";
+const OPENAI_MODEL = "gpt-5.4-mini";
 
-// Body parsing middleware with 15MB limit for text & base64 attachments
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
-// Lazy GoogleGenAI client
-let aiClient: GoogleGenAI | null = null;
-function getAI(): GoogleGenAI {
+let aiClient: OpenAI | null = null;
+
+function getAI(): OpenAI {
   if (!aiClient) {
-    aiClient = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || "",
-});
+    aiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
   }
   return aiClient;
 }
 
-// Health check endpoint
+function hasOpenAIKey(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 5);
+}
+
 app.get("/api/health", (req: Request, res: Response) => {
-  const hasKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5);
   res.json({
     status: "ok",
-    model: "gemini-3.6-flash",
-    hasApiKey: hasKey,
+    model: OPENAI_MODEL,
+    hasApiKey: hasOpenAIKey(),
     timestamp: new Date().toISOString(),
   });
 });
 
-// Helper for word count
 function countWords(str: string): number {
   return str.trim() ? str.trim().split(/\s+/).length : 0;
+}
+
+function dataUrl(mimeType: string, base64Data: string): string {
+  return `data:${mimeType};base64,${base64Data}`;
 }
 
 // ==========================================
 // 1. Text & Document Summarizer API
 // ==========================================
-app.post("/api/gemini/summarize", async (req: Request, res: Response): Promise<void> => {
+app.post("/api/OpenAi/summarize", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { text, format = "executive", length = "medium", targetAudience = "general", imagePart } = req.body;
+    const {
+      text,
+      format = "executive",
+      length = "medium",
+      targetAudience = "general",
+      imagePart,
+    } = req.body;
 
     if (!text && !imagePart) {
       res.status(400).json({ error: "Please provide text or an attachment to summarize." });
@@ -69,58 +80,60 @@ INPUT TEXT:
 ${text || "(See attached image/document)"}
 """
 
-Please provide a structured response adhering strictly to the JSON schema.
+Return a structured JSON response.
 - tldr: A concise 1-2 sentence high-impact summary.
 - executiveSummary: A well-written, coherent summary (1 to 3 paragraphs depending on length parameter).
 - keyPoints: An array of 4-7 the most critical insights/findings.
 - actionItems: An array of concrete next steps, ownerships, or action items extracted from the text (or recommended actions if not explicit).
 - suggestedQuestions: 3-4 insightful follow-up questions the user might ask about this text.`;
 
-    const contents: any = [];
-    if (imagePart && imagePart.data && imagePart.mimeType) {
-      contents.push({
-        inlineData: {
-          mimeType: imagePart.mimeType,
-          data: imagePart.data,
-        },
+    const content: any[] = [{ type: "input_text", text: prompt }];
+
+    if (imagePart?.data && imagePart?.mimeType) {
+      content.push({
+        type: "input_image",
+        image_url: dataUrl(imagePart.mimeType, imagePart.data),
       });
     }
-    contents.push({ text: prompt });
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: contents.length === 1 ? contents[0].text : { parts: contents },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            tldr: { type: Type.STRING, description: "1-2 sentence TL;DR" },
-            executiveSummary: { type: Type.STRING, description: "Detailed executive summary" },
-            keyPoints: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Array of key takeaways",
+    const response = await ai.responses.create({
+      model: OPENAI_MODEL,
+      input: [{ role: "user", content }],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "document_summary",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              tldr: { type: "string" },
+              executiveSummary: { type: "string" },
+              keyPoints: { type: "array", items: { type: "string" } },
+              actionItems: { type: "array", items: { type: "string" } },
+              suggestedQuestions: { type: "array", items: { type: "string" } },
             },
-            actionItems: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Extracted or implied action items",
-            },
-            suggestedQuestions: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Smart follow-up questions",
-            },
+            required: [
+              "tldr",
+              "executiveSummary",
+              "keyPoints",
+              "actionItems",
+              "suggestedQuestions",
+            ],
+            additionalProperties: false,
           },
-          required: ["tldr", "executiveSummary", "keyPoints", "actionItems", "suggestedQuestions"],
         },
       },
     });
 
-    const parsed = JSON.parse(response.text || "{}");
-    const summaryWords = countWords((parsed.executiveSummary || "") + " " + (parsed.tldr || ""));
-    const reductionPct = originalWords > 0 ? Math.max(0, Math.round(((originalWords - summaryWords) / originalWords) * 100)) : 0;
+    const parsed = JSON.parse(response.output_text || "{}");
+    const summaryWords = countWords(
+      (parsed.executiveSummary || "") + " " + (parsed.tldr || "")
+    );
+    const reductionPct =
+      originalWords > 0
+        ? Math.max(0, Math.round(((originalWords - summaryWords) / originalWords) * 100))
+        : 0;
     const readingTime = Math.max(1, Math.ceil(summaryWords / 200));
 
     res.json({
@@ -143,7 +156,7 @@ Please provide a structured response adhering strictly to the JSON schema.
 // ==========================================
 // 2. Document & Text Analyzer API
 // ==========================================
-app.post("/api/gemini/analyze", async (req: Request, res: Response): Promise<void> => {
+app.post("/api/OpenAi/analyze", async (req: Request, res: Response): Promise<void> => {
   try {
     const { text, imagePart } = req.body;
 
@@ -156,7 +169,7 @@ app.post("/api/gemini/analyze", async (req: Request, res: Response): Promise<voi
     const words = countWords(text || "");
 
     const prompt = `You are an expert linguistic analyst, strategic editor, and productivity coach.
-Perform a comprehensive deep analysis of the following content:
+Perform a comprehensive deep analysis of the following content.
 
 INPUT CONTENT:
 """
@@ -164,110 +177,111 @@ ${text || "(See attached image/document)"}
 """
 
 Analyze and evaluate:
-1. Overall Tone: (e.g. "Authoritative & Formal", "Conversational & Urgent", "Analytical & Objective")
-2. Sentiment: Choose from 'positive', 'neutral', 'negative', 'mixed'
-3. Sentiment Score: Integer 0 to 100 (where 0 is extremely negative, 50 is neutral, 100 is enthusiastically positive)
-4. Readability Level: e.g. "Grade 10 (High School / Business Standard)", "College Graduate", "Grade 7 (Easy Reading)"
-5. Key Topics: Array of 3-6 core themes or concepts.
-6. Named Entities: Array of objects with 'name', 'type' (Person, Organization, Location, Metric, Tech, Product, Date), and 'description'.
-7. Action Items: Array of objects with 'task', 'priority' ('high', 'medium', 'low'), and optional 'owner'.
-8. Strengths: 2-4 points on what the writing does well.
-9. Suggestions: 2-4 concrete suggestions for improvement (grammar, clarity, conciseness, or tone) with original phrase, suggested revision, and explanation.
-10. Insights: A paragraph describing strategic insights, underlying assumptions, risks, or opportunities found in the text.`;
+1. Overall Tone
+2. Sentiment: choose positive, neutral, negative, or mixed
+3. Sentiment Score: integer 0 to 100
+4. Readability Level
+5. Key Topics: 3-6 core themes
+6. Named Entities: objects with name, type, and description
+7. Action Items: objects with task, priority, and optional owner
+8. Strengths: 2-4 points
+9. Suggestions: 2-4 concrete improvements with original, suggested, explanation, and type
+10. Insights: strategic insights, assumptions, risks, or opportunities.`;
 
-    const contents: any = [];
-    if (imagePart && imagePart.data && imagePart.mimeType) {
-      contents.push({
-        inlineData: {
-          mimeType: imagePart.mimeType,
-          data: imagePart.data,
-        },
+    const content: any[] = [{ type: "input_text", text: prompt }];
+
+    if (imagePart?.data && imagePart?.mimeType) {
+      content.push({
+        type: "input_image",
+        image_url: dataUrl(imagePart.mimeType, imagePart.data),
       });
     }
-    contents.push({ text: prompt });
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: contents.length === 1 ? contents[0].text : { parts: contents },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            overallTone: { type: Type.STRING },
-            sentiment: { type: Type.STRING },
-            sentimentScore: { type: Type.INTEGER },
-            readabilityLevel: { type: Type.STRING },
-            keyTopics: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
-            entities: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  type: { type: Type.STRING },
-                  description: { type: Type.STRING },
+    const response = await ai.responses.create({
+      model: OPENAI_MODEL,
+      input: [{ role: "user", content }],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "document_analysis",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              overallTone: { type: "string" },
+              sentiment: { type: "string" },
+              sentimentScore: { type: "integer" },
+              readabilityLevel: { type: "string" },
+              keyTopics: { type: "array", items: { type: "string" } },
+              entities: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    type: { type: "string" },
+                    description: { type: "string" },
+                  },
+                  required: ["name", "type", "description"],
+                  additionalProperties: false,
                 },
-                required: ["name", "type", "description"],
               },
-            },
-            actionItems: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  task: { type: Type.STRING },
-                  priority: { type: Type.STRING },
-                  owner: { type: Type.STRING },
+              actionItems: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    task: { type: "string" },
+                    priority: { type: "string" },
+                    owner: { type: "string" },
+                  },
+                  required: ["task", "priority", "owner"],
+                  additionalProperties: false,
                 },
-                required: ["task", "priority"],
               },
-            },
-            strengths: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
-            suggestions: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  original: { type: Type.STRING },
-                  suggested: { type: Type.STRING },
-                  explanation: { type: Type.STRING },
-                  type: { type: Type.STRING },
+              strengths: { type: "array", items: { type: "string" } },
+              suggestions: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    original: { type: "string" },
+                    suggested: { type: "string" },
+                    explanation: { type: "string" },
+                    type: { type: "string" },
+                  },
+                  required: ["original", "suggested", "explanation", "type"],
+                  additionalProperties: false,
                 },
-                required: ["original", "suggested", "explanation", "type"],
               },
+              insights: { type: "string" },
             },
-            insights: { type: Type.STRING },
+            required: [
+              "overallTone",
+              "sentiment",
+              "sentimentScore",
+              "readabilityLevel",
+              "keyTopics",
+              "entities",
+              "actionItems",
+              "strengths",
+              "suggestions",
+              "insights",
+            ],
+            additionalProperties: false,
           },
-          required: [
-            "overallTone",
-            "sentiment",
-            "sentimentScore",
-            "readabilityLevel",
-            "keyTopics",
-            "entities",
-            "actionItems",
-            "strengths",
-            "suggestions",
-            "insights",
-          ],
         },
       },
     });
 
-    const parsed = JSON.parse(response.text || "{}");
+    const parsed = JSON.parse(response.output_text || "{}");
     const readingTime = Math.max(1, Math.ceil(words / 200));
 
     res.json({
       overallTone: parsed.overallTone || "Neutral",
       sentiment: parsed.sentiment || "neutral",
-      sentimentScore: typeof parsed.sentimentScore === "number" ? parsed.sentimentScore : 50,
+      sentimentScore:
+        typeof parsed.sentimentScore === "number" ? parsed.sentimentScore : 50,
       readabilityLevel: parsed.readabilityLevel || "Standard",
       readingTimeMinutes: readingTime,
       keyTopics: parsed.keyTopics || [],
@@ -286,7 +300,7 @@ Analyze and evaluate:
 // ==========================================
 // 3. Content Generation & Writing Studio API
 // ==========================================
-app.post("/api/gemini/generate", async (req: Request, res: Response): Promise<void> => {
+app.post("/api/OpenAi/generate", async (req: Request, res: Response): Promise<void> => {
   try {
     const {
       template = "email",
@@ -315,7 +329,8 @@ app.post("/api/gemini/generate", async (req: Request, res: Response): Promise<vo
       freeform: "Generate thoughtful, high-quality, formatted content tailored to the instructions.",
     };
 
-    const instruction = templateInstructions[template] || templateInstructions.freeform;
+    const instruction =
+      templateInstructions[template] || templateInstructions.freeform;
 
     const prompt = `You are an elite productivity copywriter and subject matter expert.
 Task: ${instruction}
@@ -328,39 +343,43 @@ PARAMETERS:
 - Target Audience: ${audience}
 
 OUTPUT REQUIREMENTS:
-Please provide a JSON response with:
 - title: A catchy, professional title or subject line.
 - content: The complete generated content in pristine Markdown formatting.
 - tags: 3-5 relevant thematic tags.
 - tips: 2-3 expert delivery/writing tips to maximize impact.
 - estimatedReadingTime: e.g. "2 min read"`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            content: { type: Type.STRING },
-            tags: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
+    const response = await ai.responses.create({
+      model: OPENAI_MODEL,
+      input: prompt,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "generated_content",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              content: { type: "string" },
+              tags: { type: "array", items: { type: "string" } },
+              tips: { type: "array", items: { type: "string" } },
+              estimatedReadingTime: { type: "string" },
             },
-            tips: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
-            estimatedReadingTime: { type: Type.STRING },
+            required: [
+              "title",
+              "content",
+              "tags",
+              "tips",
+              "estimatedReadingTime",
+            ],
+            additionalProperties: false,
           },
-          required: ["title", "content", "tags", "tips", "estimatedReadingTime"],
         },
       },
     });
 
-    const parsed = JSON.parse(response.text || "{}");
+    const parsed = JSON.parse(response.output_text || "{}");
     res.json(parsed);
   } catch (error: any) {
     console.error("Generate API Error:", error);
@@ -371,9 +390,14 @@ Please provide a JSON response with:
 // ==========================================
 // 4. Intelligent Conversational Q&A API
 // ==========================================
-app.post("/api/gemini/qa", async (req: Request, res: Response): Promise<void> => {
+app.post("/api/openai/qa", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { question, history = [], contextDocument = "", persona = "smart_assistant" } = req.body;
+    const {
+      question,
+      history = [],
+      contextDocument = "",
+      persona = "smart_assistant",
+    } = req.body;
 
     if (!question) {
       res.status(400).json({ error: "Please provide a question or message." });
@@ -383,16 +407,21 @@ app.post("/api/gemini/qa", async (req: Request, res: Response): Promise<void> =>
     const ai = getAI();
 
     const personaInstructions: Record<string, string> = {
-      smart_assistant: "You are the AI Smart Assistant: concise, deeply knowledgeable, highly actionable, and polite.",
-      tech_lead: "You are a Senior Principal Software Architect: provide technical depth, system design best practices, trade-offs, and clean code.",
-      executive_coach: "You are a C-level Executive Strategist: focus on business value, ROI, high-level clarity, and decision frameworks.",
-      research_analyst: "You are a meticulous Senior Research Analyst: provide citations, structured breakdowns, logical reasoning, and evidence-based analysis.",
-      copy_editor: "You are a Master Copy Editor: focus on impeccable grammar, clarity, persuasive rhetoric, and stylistic precision.",
+      smart_assistant:
+        "You are the AI Smart Assistant: concise, deeply knowledgeable, highly actionable, and polite.",
+      tech_lead:
+        "You are a Senior Principal Software Architect: provide technical depth, system design best practices, trade-offs, and clean code.",
+      executive_coach:
+        "You are a C-level Executive Strategist: focus on business value, ROI, high-level clarity, and decision frameworks.",
+      research_analyst:
+        "You are a meticulous Senior Research Analyst: provide citations, structured breakdowns, logical reasoning, and evidence-based analysis.",
+      copy_editor:
+        "You are a Master Copy Editor: focus on impeccable grammar, clarity, persuasive rhetoric, and stylistic precision.",
     };
 
-    const personaPrompt = personaInstructions[persona] || personaInstructions.smart_assistant;
-
-    let systemInstruction = `${personaPrompt}
+    const systemInstruction =
+      (personaInstructions[persona] || personaInstructions.smart_assistant) +
+      `
 Always format responses in clean, beautiful Markdown with appropriate bullet points, bold key terms, and code blocks if applicable.
 At the very end of your response, provide a distinct section labeled "### Suggested Follow-ups" with 2-3 brief, relevant follow-up questions the user might want to explore next.`;
 
@@ -402,34 +431,37 @@ At the very end of your response, provide a distinct section labeled "### Sugges
     }
     userPromptWithContext += `USER QUESTION:\n${question}`;
 
-    // Format chat messages
-    const contents: any[] = [];
+    const input: any[] = [
+      {
+        role: "developer",
+        content: [{ type: "input_text", text: systemInstruction }],
+      },
+    ];
 
-    // Add prior turns if present
     for (const msg of history.slice(-6)) {
-      contents.push({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }],
+      input.push({
+        role: msg.role === "assistant" ? "assistant" : "user",
+        content: [
+          {
+            type: msg.role === "assistant" ? "output_text" : "input_text",
+            text: msg.content,
+          },
+        ],
       });
     }
 
-    // Add the current user message
-    contents.push({
+    input.push({
       role: "user",
-      parts: [{ text: userPromptWithContext }],
+      content: [{ type: "input_text", text: userPromptWithContext }],
     });
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents,
-      config: {
-        systemInstruction,
-      },
+    const response = await ai.responses.create({
+      model: OPENAI_MODEL,
+      input,
     });
 
-    const fullText = response.text || "";
+    const fullText = response.output_text || "";
 
-    // Extract suggested follow-ups from the text if present
     let cleanedContent = fullText;
     const followUps: string[] = [];
 
@@ -438,6 +470,7 @@ At the very end of your response, provide a distinct section labeled "### Sugges
       cleanedContent = fullText.substring(0, followUpMarker).trim();
       const followUpSection = fullText.substring(followUpMarker);
       const lines = followUpSection.split("\n");
+
       for (const line of lines) {
         const trimmed = line.replace(/^[-*•\d.]+\s*/, "").trim();
         if (trimmed && !trimmed.startsWith("#") && trimmed.length > 5) {
@@ -447,13 +480,20 @@ At the very end of your response, provide a distinct section labeled "### Sugges
     }
 
     if (followUps.length === 0) {
-      followUps.push("Can you elaborate on the key points?", "What are the practical next steps?", "Can you simplify this for a non-technical audience?");
+      followUps.push(
+        "Can you elaborate on the key points?",
+        "What are the practical next steps?",
+        "Can you simplify this for a non-technical audience?"
+      );
     }
 
     res.json({
       content: cleanedContent,
       suggestedFollowUps: followUps.slice(0, 3),
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
     });
   } catch (error: any) {
     console.error("Q&A API Error:", error);
@@ -464,7 +504,7 @@ At the very end of your response, provide a distinct section labeled "### Sugges
 // ==========================================
 // 5. Quick Productivity Transform Tools API
 // ==========================================
-app.post("/api/gemini/transform", async (req: Request, res: Response): Promise<void> => {
+app.post("/api/OpenAi/transform", async (req: Request, res: Response): Promise<void> => {
   try {
     const { text, action } = req.body;
 
@@ -476,19 +516,26 @@ app.post("/api/gemini/transform", async (req: Request, res: Response): Promise<v
     const ai = getAI();
 
     const actionPrompts: Record<string, string> = {
-      fix_grammar: "Fix all grammatical, spelling, and punctuation errors while maintaining the original tone and meaning. Highlight changes.",
-      bulletify: "Convert this prose into crisp, well-structured bullet points organized by importance.",
-      make_formal: "Rewrite this in an elegant, polished, professional executive tone suitable for corporate leadership.",
-      simplify_eli5: "Explain and rewrite this in extremely simple, friendly terms as if explaining to a 10-year-old.",
+      fix_grammar:
+        "Fix all grammatical, spelling, and punctuation errors while maintaining the original tone and meaning. Highlight changes.",
+      bulletify:
+        "Convert this prose into crisp, well-structured bullet points organized by importance.",
+      make_formal:
+        "Rewrite this in an elegant, polished, professional executive tone suitable for corporate leadership.",
+      simplify_eli5:
+        "Explain and rewrite this in extremely simple, friendly terms as if explaining to a 10-year-old.",
       translate_es: "Translate this accurately into natural, fluent Spanish.",
       translate_fr: "Translate this accurately into natural, fluent French.",
       translate_de: "Translate this accurately into natural, fluent German.",
       translate_ja: "Translate this accurately into natural, polite Japanese.",
-      to_table: "Analyze the structured data, comparisons, or items in this text and present it as a clean Markdown table with headers.",
-      extract_checklist: "Extract all actionable tasks from this text into a clear markdown checklist format with '- [ ] Task (Owner/Deadline if mentioned)'.",
+      to_table:
+        "Analyze the structured data, comparisons, or items in this text and present it as a clean Markdown table with headers.",
+      extract_checklist:
+        "Extract all actionable tasks from this text into a clear markdown checklist format with '- [ ] Task (Owner/Deadline if mentioned)'.",
     };
 
-    const instruction = actionPrompts[action] || "Improve and polish this text.";
+    const instruction =
+      actionPrompts[action] || "Improve and polish this text.";
 
     const prompt = `Directive: ${instruction}
 
@@ -499,16 +546,16 @@ ${text}
 
 Provide the output in clean, formatted Markdown. Keep explanations minimal and deliver the transformed text directly.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: prompt,
+    const response = await ai.responses.create({
+      model: OPENAI_MODEL,
+      input: prompt,
     });
 
     res.json({
-      transformedText: response.text || "",
+      transformedText: response.output_text || "",
       action,
       originalWordCount: countWords(text),
-      transformedWordCount: countWords(response.text || ""),
+      transformedWordCount: countWords(response.output_text || ""),
     });
   } catch (error: any) {
     console.error("Transform API Error:", error);
@@ -516,11 +563,10 @@ Provide the output in clean, formatted Markdown. Keep explanations minimal and d
   }
 });
 
-
 // ==========================================
 // 6. AI Career Assistant
 // ==========================================
-app.post("/api/gemini/career-match", async (req: Request, res: Response): Promise<void> => {
+app.post("/api/OpenAi/career-match", async (req: Request, res: Response): Promise<void> => {
   try {
     const { jobDescription, profile = "", file } = req.body;
 
@@ -528,6 +574,7 @@ app.post("/api/gemini/career-match", async (req: Request, res: Response): Promis
       res.status(400).json({ error: "Please provide a job or internship description." });
       return;
     }
+
     if (!profile?.trim() && !file) {
       res.status(400).json({ error: "Please provide a candidate profile or upload a file." });
       return;
@@ -539,6 +586,7 @@ app.post("/api/gemini/career-match", async (req: Request, res: Response): Promis
 
     if (file?.data && file?.name) {
       extractedText = await extractCareerFile(file);
+
       if (file.name.toLowerCase().endsWith(".zip")) {
         const evidence = extractProjectEvidence(extractedText);
         projectEvidence = [
@@ -549,7 +597,10 @@ app.post("/api/gemini/career-match", async (req: Request, res: Response): Promis
       }
     }
 
-    const candidateProfile = [profile.trim(), extractedText.trim()].filter(Boolean).join("\n\n");
+    const candidateProfile = [profile.trim(), extractedText.trim()]
+      .filter(Boolean)
+      .join("\n\n");
+
     if (!candidateProfile && !file?.name?.toLowerCase().endsWith(".pdf")) {
       res.status(400).json({ error: "The uploaded file appears to be empty or invalid." });
       return;
@@ -573,67 +624,75 @@ RULES:
 4. Identify critical gaps and explain their impact.
 5. Recommendations must be specific and actionable.
 6. Build a practical roadmap with timeframes.
-7. Treat uploaded project evidence as supporting evidence, not as proof of professional experience.
+7. Treat uploaded project evidence as supporting evidence, not as proof of professional experience.`;
 
-Return JSON with:
-- jobSummary: 2-3 sentence role summary.
-- requiredSkills: 10-15 important skills.
-- matchingSkills: only skills clearly supported by the candidate.
-- missingSkills: skills required by the role that are missing or weak.
-- matchPercentage: integer 0-100.
-- matchReason: 2-4 sentences explaining the score with concrete evidence.
-- recommendations: 5-7 specific actions.
-- roadmap: 5-7 ordered steps with realistic timelines.`;
+    const content: any[] = [{ type: "input_text", text: prompt }];
 
-    const contents: any[] = [];
     if (file?.name?.toLowerCase().endsWith(".pdf") && file?.data) {
-      contents.push({
-        inlineData: {
-          mimeType: file.mimeType || "application/pdf",
-          data: file.data,
-        },
+      content.push({
+        type: "input_file",
+        filename: file.name,
+        file_data: dataUrl(file.mimeType || "application/pdf", file.data),
       });
     }
-    contents.push({ text: prompt });
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: contents.length === 1 ? contents[0].text : { parts: contents },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            jobSummary: { type: Type.STRING },
-            requiredSkills: { type: Type.ARRAY, items: { type: Type.STRING } },
-            matchingSkills: { type: Type.ARRAY, items: { type: Type.STRING } },
-            missingSkills: { type: Type.ARRAY, items: { type: Type.STRING } },
-            matchPercentage: { type: Type.INTEGER },
-            matchReason: { type: Type.STRING },
-            recommendations: { type: Type.ARRAY, items: { type: Type.STRING } },
-            roadmap: { type: Type.ARRAY, items: { type: Type.STRING } },
+    const response = await ai.responses.create({
+      model: OPENAI_MODEL,
+      input: [{ role: "user", content }],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "career_analysis",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              jobSummary: { type: "string" },
+              requiredSkills: { type: "array", items: { type: "string" } },
+              matchingSkills: { type: "array", items: { type: "string" } },
+              missingSkills: { type: "array", items: { type: "string" } },
+              matchPercentage: { type: "integer" },
+              matchReason: { type: "string" },
+              recommendations: { type: "array", items: { type: "string" } },
+              roadmap: { type: "array", items: { type: "string" } },
+            },
+            required: [
+              "jobSummary",
+              "requiredSkills",
+              "matchingSkills",
+              "missingSkills",
+              "matchPercentage",
+              "matchReason",
+              "recommendations",
+              "roadmap",
+            ],
+            additionalProperties: false,
           },
-          required: [
-            "jobSummary", "requiredSkills", "matchingSkills", "missingSkills",
-            "matchPercentage", "matchReason", "recommendations", "roadmap"
-          ],
         },
       },
     });
 
     let result: any;
     try {
-      result = JSON.parse(response.text || "{}");
+      result = JSON.parse(response.output_text || "{}");
     } catch {
-      res.status(500).json({ error: "The AI returned an invalid career analysis. Please try again." });
+      res.status(500).json({
+        error: "The AI returned an invalid career analysis. Please try again.",
+      });
       return;
     }
 
-    result.matchPercentage = Math.max(0, Math.min(100, Number(result.matchPercentage) || 0));
+    result.matchPercentage = Math.max(
+      0,
+      Math.min(100, Number(result.matchPercentage) || 0)
+    );
+
     res.json(result);
   } catch (error: any) {
     console.error("Career Match API Error:", error);
-    res.status(500).json({ error: error.message || "Failed to generate career analysis." });
+    res.status(500).json({
+      error: error.message || "Failed to generate career analysis.",
+    });
   }
 });
 
@@ -653,9 +712,10 @@ async function startServer() {
     });
   }
 
-  // Use HTTP for development (Vite doesn't play well with HTTPS in dev mode)
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`\n✨ AI Smart Assistant Server is running!\n📍 Access it at: http://${HOSTNAME}:${PORT}\n`);
+    console.log(
+      `\n✨ AI Smart Assistant Server is running!\n📍 Access it at: http://${HOSTNAME}:${PORT}\n`
+    );
   });
 }
 
