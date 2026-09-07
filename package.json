@@ -21,7 +21,6 @@
     "mammoth": "^1.12.1",
     "motion": "^12.23.24",
     "node-forge": "^1.4.0",
-    "GROQ": "^5.23.2",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-markdown": "^10.1.0",
