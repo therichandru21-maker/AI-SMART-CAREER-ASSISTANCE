@@ -25,15 +25,15 @@ Unified version of the original **AI Smart Assistant** and **AI Career Assistant
 
 ## Architecture
 
-`React/Vite UI -> Express API -> OpenAi`
+`React/Vite UI -> Express API -> GROQ`
 
 The Career Assistant is now a native tab in the same Smart Assistant application. The career workflow does **not** launch a separate Streamlit app.
 
-Uploaded career files are handled server-side. TXT, DOCX and ZIP files are extracted locally; PDF files are sent to OpenAi as native document input. API keys remain server-side through `OpenAi_API_KEY`.
+Uploaded career files are handled server-side. TXT, DOCX and ZIP files are extracted locally; PDF files are sent to GROQ as native document input. API keys remain server-side through `GROQ_API_KEY
 
 ## Run
 
-1. Create `.env` from `.env.example` and add a newly generated OpenAi API key.
+1. Create `.env` from `.env.example` and add a newly generated GROQ API key.
 2. Install dependencies:
 
 ```bash

@@ -126,7 +126,7 @@ export const QuickTransformView: React.FC = () => {
     setSelectedAction(action);
 
     try {
-      const res = await fetch('/api/OpenAi/transform', {
+      const res = await fetch('/api/GROQ/transform', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -372,7 +372,7 @@ export const QuickTransformView: React.FC = () => {
                   <RefreshCw className="w-5 h-5 animate-spin mx-auto text-indigo-600 dark:text-indigo-400" />
 
                   <p className="text-xs font-medium">
-                    Transforming syntax with OpenAi...
+                    Transforming syntax with GROQ...
                   </p>
                 </div>
               )}

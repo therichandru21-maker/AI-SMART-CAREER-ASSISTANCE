@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import OpenAI from "openai";
+import GROQ from "GROQ";
 import dotenv from "dotenv";
 import {
   extractCareerFile,
@@ -14,31 +14,31 @@ const app = express();
 
 const PORT = 8080;
 const HOSTNAME = "smartassistai";
-const OPENAI_MODEL = "gpt-5.4-mini";
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
-let aiClient: OpenAI | null = null;
+let aiClient: GROQ | null = null;
 
-function getAI(): OpenAI {
+function getAI(): GROQ {
   if (!aiClient) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is not configured.");
+    if (!process.env.GROQ_API_KEY
+      throw new Error("GROQ_API_KEYs not configured.");
     }
 
-    aiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+    aiClient = new GROQ({
+      apiKey: process.env.GROQ_API_KEY,
     });
   }
 
   return aiClient;
 }
 
-function hasOpenAIKey(): boolean {
+function hasGROQKey(): boolean {
   return Boolean(
-    process.env.OPENAI_API_KEY &&
-      process.env.OPENAI_API_KEY.length > 5
+    process.env.GROQ_API_KEY &&
+      process.env.GROQ_API_KEY.length > 5
   );
 }
 
@@ -64,8 +64,8 @@ app.get(
   (req: Request, res: Response) => {
     res.json({
       status: "ok",
-      model: OPENAI_MODEL,
-      hasApiKey: hasOpenAIKey(),
+      model: GROQ_MODEL,
+      hasApiKey: hasGROQKey(),
       timestamp: new Date().toISOString(),
     });
   }
@@ -142,7 +142,7 @@ Return a structured JSON response.
 
       const response =
         await ai.responses.create({
-          model: OPENAI_MODEL,
+          model: GROQ_MODEL,
           input: [
             {
               role: "user",
@@ -324,7 +324,7 @@ Analyze:
 
       const response =
         await ai.responses.create({
-          model: OPENAI_MODEL,
+          model: GROQ_MODEL,
           input: [
             {
               role: "user",
@@ -599,7 +599,7 @@ OUTPUT:
 
       const response =
         await ai.responses.create({
-          model: OPENAI_MODEL,
+          model: GROQ_MODEL,
           input: prompt,
           text: {
             format: {
@@ -780,7 +780,7 @@ ${question}`;
 
       const response =
         await ai.responses.create({
-          model: OPENAI_MODEL,
+          model: GROQ_MODEL,
           input,
         });
 
@@ -931,7 +931,7 @@ Provide clean formatted Markdown.`;
 
       const response =
         await ai.responses.create({
-          model: OPENAI_MODEL,
+          model: GROQ_MODEL,
           input: prompt,
         });
 
@@ -1195,7 +1195,7 @@ RULES:
 
       const response =
         await ai.responses.create({
-          model: OPENAI_MODEL,
+          model: GROQ_MODEL,
 
           input: [
             {

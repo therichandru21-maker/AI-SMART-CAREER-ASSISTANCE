@@ -99,12 +99,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Right Status Badges & Action Controls */}
           <div className="flex items-center gap-2 sm:gap-4">
 
-            {/* OpenAi Live Status Pill */}
+            {/* GROQive Status Pill */}
             <div className="hidden sm:flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full text-xs font-medium text-slate-600 dark:text-slate-300">
               {isApiHealthy ? (
                 <>
                   <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                  <span>OpenAi Connected</span>
+                  <span>GROQ Connected</span>
                 </>
               ) : (
                 <>

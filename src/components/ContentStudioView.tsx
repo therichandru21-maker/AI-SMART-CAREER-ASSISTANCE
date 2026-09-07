@@ -151,7 +151,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
 
     social_post: {
       topic:
-        'Announcing our new AI Smart Assistant platform powered by OpenAI',
+        'Announcing our new AI Smart Assistant platform powered by GROQ',
       keyPoints:
         '- Fast response times for deep document analysis\n- 100% server-side token security\n- Open source template for developer productivity',
       audience:
@@ -160,7 +160,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
 
     code: {
       topic:
-        'TypeScript middleware for caching OpenAI API responses with TTL and hash keys',
+        'TypeScript middleware for caching GROQ API responses with TTL and hash keys',
       keyPoints:
         '- In-memory LRU cache or Redis support\n- SHA-256 hash generation of prompt & system instruction\n- Cache-Control headers and cache hit telemetry',
       audience:
@@ -207,12 +207,12 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
       };
 
       /*
-       * Backend route remains /api/OpenAi/generate for compatibility
+       * Backend route remains /api/GROQ/generate for compatibility
        * with the existing server route.
        *
-       * The backend itself should use OpenAI.
+       * The backend itself should use GROQ.
        */
-      const res = await fetch('/api/OpenAi/generate', {
+      const res = await fetch('/api/GROQ/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -301,7 +301,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">
             Generate high-impact business correspondence,
             articles, meeting agendas, and technical specs
-            with OpenAI.
+            with GROQ.
           </p>
         </div>
 
@@ -329,7 +329,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
                 <RefreshCw className="w-4 h-4 animate-spin text-white" />
 
                 <span>
-                  Drafting with OpenAI...
+                  Drafting with GROQ...
                 </span>
               </>
             ) : (
@@ -578,7 +578,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
                   Select a template above or click
                   "Sample Prompt" to generate emails,
                   agendas, or technical specs using
-                  OpenAI.
+                  GROQ.
                 </p>
               </div>
             )}
@@ -591,7 +591,7 @@ export const ContentStudioView: React.FC<ContentStudioViewProps> = ({
                 <RefreshCw className="w-4 h-4 animate-spin" />
 
                 <span className="text-xs font-semibold tracking-wide uppercase">
-                  Composing content with OpenAI...
+                  Composing content with GROQ...
                 </span>
               </div>
 

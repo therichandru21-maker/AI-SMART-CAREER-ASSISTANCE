@@ -33,7 +33,7 @@ export const ChatAssistantView: React.FC<ChatAssistantViewProps> = ({
     {
       id: 'welcome-msg',
       role: 'assistant',
-      content: `Hello! I am your **AI Smart Assistant** powered by OpenAI.
+      content: `Hello! I am your **AI Smart Assistant** powered by GROQ.
 
 I can help you with:
 - **Answering questions** about complex documents, strategy, or code
@@ -143,15 +143,15 @@ I can help you with:
       }));
 
       /*
-       * OpenAI Backend Endpoint
+       * GROQ Backend Endpoint
        *
        * React frontend sends the request to:
-       * /api/openai/qa
+       * /api/GROQ/qa
        *
-       * The backend should handle the OpenAI API key.
-       * NEVER put OPENAI_API_KEY directly inside React/frontend code.
+       * The backend should handle the GROQ API key.
+       * NEVER put GROQ_API_KEY directly inside React/frontend code.
        */
-      const res = await fetch('/api/openai/qa', {
+      const res = await fetch('/api/GROQ/qa', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -168,7 +168,7 @@ I can help you with:
         const errData = await res
           .json()
           .catch(() => ({
-            error: 'OpenAI Q&A request failed',
+            error: 'GROQ Q&A request failed',
           }));
 
         throw new Error(
@@ -199,12 +199,12 @@ I can help you with:
         assistantMessage,
       ]);
     } catch (err: any) {
-      console.error('OpenAI request error:', err);
+      console.error('GROQ request error:', err);
 
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ **Error communicating with OpenAI:** ${
+        content: `⚠️ **Error communicating with GROQ:** ${
           err.message ||
           'Please check your connection and API configuration.'
         }`,
@@ -249,7 +249,7 @@ I can help you with:
         }),
         suggestedFollowUps: [
           'Draft a high-priority customer escalation response email',
-          'Explain how modern OpenAI models can support document analysis',
+          'Explain how modern GROQ models can support document analysis',
           'Create a 5-step checklist for enterprise product launch',
         ],
       },
@@ -400,7 +400,7 @@ I can help you with:
 
           <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
             Paste any reference text or report below.
-            The OpenAI assistant will ground its
+            The GROQ assistant will ground its
             responses in this document.
           </p>
 
@@ -564,7 +564,7 @@ I can help you with:
                 <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
 
                 <span>
-                  Formulating response with OpenAI...
+                  Formulating response with GROQ...
                 </span>
               </div>
             </div>
