@@ -11,8 +11,12 @@ dotenv.config();
 
 const app = express();
 
-const PORT = 8080;
-const HOSTNAME = "smartassistai";
+/* =========================================================
+   SERVER CONFIG
+========================================================= */
+
+const PORT = Number(process.env.PORT) || 8080;
+const HOSTNAME = process.env.HOSTNAME || "localhost";
 
 const GROQ_MODEL =
   process.env.GROQ_MODEL || "openai/gpt-oss-120b";
@@ -24,115 +28,270 @@ const GROQ_VISION_MODEL =
 const GROQ_API_URL =
   "https://api.groq.com/openai/v1/chat/completions";
 
-app.use(express.json({ limit: "15mb" }));
-app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+/* =========================================================
+   CORS
+========================================================= */
+
+app.use((req: Request, res: Response, next) => {
+  const allowedOrigins = [
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://localhost:3000",
+
+    "https://ai-smart-career-assistance.onrender.com",
+
+    "https://ai-smart-career-assistance-1kug.vercel.app",
+  ];
+
+  const origin = req.headers.origin;
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      origin
+    );
+  }
+
+  res.setHeader("Vary", "Origin");
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+
+  next();
+});
+
+/* =========================================================
+   BODY PARSERS
+========================================================= */
+
+app.use(
+  express.json({
+    limit: "25mb",
+  })
+);
+
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: "25mb",
+  })
+);
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type GroqMessage = {
-  role: "system" | "developer" | "user" | "assistant";
+  role:
+    | "system"
+    | "developer"
+    | "user"
+    | "assistant";
+
   content: any;
 };
 
-type JsonSchema = Record<string, any>;
+/* =========================================================
+   GROQ API KEY
+========================================================= */
 
 function hasGroqKey(): boolean {
+  const key = process.env.GROQ_API_KEY;
+
   return Boolean(
-    process.env.GROQ_API_KEY &&
-      process.env.GROQ_API_KEY.trim().length > 5
+    key &&
+      key.trim().length > 5
   );
 }
 
 function getGroqKey(): string {
-  const key = process.env.GROQ_API_KEY?.trim();
+  const key =
+    process.env.GROQ_API_KEY?.trim();
 
   if (!key) {
     throw new Error(
-      "GROQ_API_KEY is not configured. Add your Groq API key to the .env file."
+      "GROQ_API_KEY is not configured on the server."
     );
   }
 
   return key;
 }
 
+/* =========================================================
+   GROQ REQUEST
+========================================================= */
+
 async function groqRequest(
   messages: GroqMessage[],
   options: {
     model?: string;
-    jsonSchema?: {
-      name: string;
-      schema: JsonSchema;
-      strict?: boolean;
-    };
     temperature?: number;
     maxCompletionTokens?: number;
+    jsonMode?: boolean;
   } = {}
-): Promise<{ text: string; raw: any }> {
+): Promise<{
+  text: string;
+  raw: any;
+}> {
   const body: any = {
-    model: options.model || GROQ_MODEL,
+    model:
+      options.model || GROQ_MODEL,
+
     messages,
-    temperature: options.temperature ?? 0.2,
+
+    temperature:
+      options.temperature ?? 0.2,
+
     max_completion_tokens:
       options.maxCompletionTokens ?? 4096,
   };
 
-  if (options.jsonSchema) {
+  /*
+   * Use simple JSON mode instead of json_schema.
+   * This is more compatible with Groq models.
+   */
+
+  if (options.jsonMode) {
     body.response_format = {
-      type: "json_schema",
-      json_schema: {
-        name: options.jsonSchema.name,
-        strict: options.jsonSchema.strict ?? true,
-        schema: options.jsonSchema.schema,
-      },
+      type: "json_object",
     };
   }
 
-  const response = await fetch(GROQ_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${getGroqKey()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const response = await fetch(
+    GROQ_API_URL,
+    {
+      method: "POST",
 
-  const data = await response.json().catch(() => ({}));
+      headers: {
+        Authorization:
+          `Bearer ${getGroqKey()}`,
+
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify(body),
+    }
+  );
+
+  const data =
+    await response
+      .json()
+      .catch(() => ({}));
 
   if (!response.ok) {
     const message =
       data?.error?.message ||
       `Groq API request failed with status ${response.status}.`;
 
-    const error = new Error(message) as Error & {
-      status?: number;
-      code?: string;
-    };
+    const error =
+      new Error(message) as Error & {
+        status?: number;
+        code?: string;
+      };
 
-    error.status = response.status;
-    error.code = data?.error?.code;
+    error.status =
+      response.status;
+
+    error.code =
+      data?.error?.code;
 
     throw error;
   }
 
+  const text =
+    data?.choices?.[0]?.message
+      ?.content || "";
+
   return {
-    text:
-      data?.choices?.[0]?.message?.content || "",
+    text,
     raw: data,
   };
 }
 
-function parseJson(text: string): any {
-  const cleaned = text
-    .trim()
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/\s*```$/i, "");
+/* =========================================================
+   JSON PARSER
+========================================================= */
 
-  return JSON.parse(cleaned);
+function parseJson(
+  text: string
+): any {
+  let cleaned =
+    String(text || "")
+      .trim();
+
+  cleaned =
+    cleaned
+      .replace(
+        /^```json\s*/i,
+        ""
+      )
+      .replace(
+        /^```\s*/i,
+        ""
+      )
+      .replace(
+        /\s*```$/i,
+        ""
+      )
+      .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start =
+      cleaned.indexOf("{");
+
+    const end =
+      cleaned.lastIndexOf("}");
+
+    if (
+      start !== -1 &&
+      end !== -1 &&
+      end > start
+    ) {
+      return JSON.parse(
+        cleaned.substring(
+          start,
+          end + 1
+        )
+      );
+    }
+
+    throw new Error(
+      "Groq returned an invalid JSON response."
+    );
+  }
 }
 
-function countWords(str: string): number {
-  return str.trim()
-    ? str.trim().split(/\s+/).length
-    : 0;
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function countWords(
+  value: string
+): number {
+  const text =
+    String(value || "")
+      .trim();
+
+  if (!text) {
+    return 0;
+  }
+
+  return text.split(/\s+/).length;
 }
 
 function dataUrl(
@@ -146,42 +305,41 @@ function errorMessage(
   error: any,
   fallback: string
 ): string {
-  return error?.message || fallback;
+  return (
+    error?.message ||
+    fallback
+  );
 }
 
-function jsonSchemaResponse(
-  name: string,
-  schema: JsonSchema,
-  strict = true
-) {
-  return {
-    name,
-    schema,
-    strict,
-  };
-}
-
-/* ==========================================
+/* =========================================================
    HEALTH CHECK
-========================================== */
+========================================================= */
 
 app.get(
   "/api/health",
   (req: Request, res: Response) => {
     res.json({
       status: "ok",
+
       provider: "Groq",
+
       model: GROQ_MODEL,
-      visionModel: GROQ_VISION_MODEL,
-      hasApiKey: hasGroqKey(),
-      timestamp: new Date().toISOString(),
+
+      visionModel:
+        GROQ_VISION_MODEL,
+
+      hasApiKey:
+        hasGroqKey(),
+
+      timestamp:
+        new Date().toISOString(),
     });
   }
 );
 
-/* ==========================================
-   1. SUMMARIZE
-========================================== */
+/* =========================================================
+   1. SUMMARIZATION
+========================================================= */
 
 app.post(
   "/api/groq/summarize",
@@ -191,45 +349,65 @@ app.post(
   ): Promise<void> => {
     try {
       const {
-        text,
-        format = "executive",
-        length = "medium",
-        targetAudience = "general",
+        text = "",
+
+        format =
+          "executive",
+
+        length =
+          "medium",
+
+        targetAudience =
+          "general",
+
         imagePart,
       } = req.body;
 
-      if (!text && !imagePart) {
+      if (
+        !text &&
+        !imagePart
+      ) {
         res.status(400).json({
           error:
             "Please provide text or an attachment to summarize.",
         });
+
         return;
       }
 
-      const originalWords = countWords(text || "");
+      const originalWords =
+        countWords(text);
 
       const prompt = `
-You are a world-class executive research assistant and productivity analyst.
+You are an expert executive research assistant.
 
-Summarize and extract key intelligence from the following content.
+Summarize the provided content.
 
-Format requested: ${format}
-Length level: ${length}
-Target audience: ${targetAudience}
+Format:
+${format}
 
-INPUT TEXT:
+Length:
+${length}
+
+Target audience:
+${targetAudience}
+
+INPUT:
 """
 ${text || "(See attached image)"}
 """
 
-Return only valid JSON.
+Return ONLY valid JSON.
 
-Requirements:
-- tldr: concise 1-2 sentence summary
-- executiveSummary: clear summary
-- keyPoints: 4-7 critical insights
-- actionItems: concrete next steps
-- suggestedQuestions: 3-4 useful follow-up questions
+Required JSON structure:
+
+{
+  "tldr": "short summary",
+  "executiveSummary": "detailed summary",
+  "keyPoints": ["point 1", "point 2"],
+  "actionItems": ["action 1", "action 2"],
+  "suggestedQuestions": ["question 1", "question 2"]
+}
 `;
 
       const content: any[] = [
@@ -239,18 +417,19 @@ Requirements:
         },
       ];
 
-      let model = GROQ_MODEL;
-      let strict = true;
+      let model =
+        GROQ_MODEL;
 
       if (
         imagePart?.data &&
         imagePart?.mimeType
       ) {
-        model = GROQ_VISION_MODEL;
-        strict = false;
+        model =
+          GROQ_VISION_MODEL;
 
         content.push({
           type: "image_url",
+
           image_url: {
             url: dataUrl(
               imagePart.mimeType,
@@ -260,111 +439,129 @@ Requirements:
         });
       }
 
-      const response = await groqRequest(
-        [
-          {
-            role: "system",
-            content:
-              "You are a precise document intelligence assistant. Return only valid JSON.",
-          },
-          {
-            role: "user",
-            content,
-          },
-        ],
-        {
-          model,
-          jsonSchema: jsonSchemaResponse(
-            "document_summary",
+      const response =
+        await groqRequest(
+          [
             {
-              type: "object",
-              properties: {
-                tldr: {
-                  type: "string",
-                },
-                executiveSummary: {
-                  type: "string",
-                },
-                keyPoints: {
-                  type: "array",
-                  items: {
-                    type: "string",
-                  },
-                },
-                actionItems: {
-                  type: "array",
-                  items: {
-                    type: "string",
-                  },
-                },
-                suggestedQuestions: {
-                  type: "array",
-                  items: {
-                    type: "string",
-                  },
-                },
-              },
-              required: [
-                "tldr",
-                "executiveSummary",
-                "keyPoints",
-                "actionItems",
-                "suggestedQuestions",
-              ],
-              additionalProperties: false,
+              role: "system",
+
+              content:
+                "You are a precise document summarization assistant. Return valid JSON only.",
             },
-            strict
-          ),
-          temperature: 0.2,
-          maxCompletionTokens: 4096,
-        }
-      );
 
-      const parsed = parseJson(response.text);
+            {
+              role: "user",
 
-      const summaryWords = countWords(
-        `${parsed.executiveSummary || ""} ${
-          parsed.tldr || ""
-        }`
-      );
+              content,
+            },
+          ],
+          {
+            model,
 
-      const reductionPct =
+            temperature:
+              0.2,
+
+            maxCompletionTokens:
+              4096,
+
+            jsonMode:
+              !imagePart,
+          }
+        );
+
+      let parsed: any;
+
+      try {
+        parsed =
+          parseJson(
+            response.text
+          );
+      } catch {
+        parsed = {
+          tldr:
+            response.text,
+
+          executiveSummary:
+            response.text,
+
+          keyPoints: [],
+
+          actionItems: [],
+
+          suggestedQuestions: [],
+        };
+      }
+
+      const summaryWords =
+        countWords(
+          `${parsed.tldr || ""} ${
+            parsed.executiveSummary || ""
+          }`
+        );
+
+      const reductionPercentage =
         originalWords > 0
           ? Math.max(
               0,
               Math.round(
-                ((originalWords - summaryWords) /
-                  originalWords) *
-                  100
+                (
+                  (originalWords -
+                    summaryWords) /
+                  originalWords
+                ) * 100
               )
             )
           : 0;
-
-      const readingTime = Math.max(
-        1,
-        Math.ceil(summaryWords / 200)
-      );
 
       res.json({
         tldr:
           parsed.tldr ||
           "Summary generated successfully.",
+
         executiveSummary:
-          parsed.executiveSummary || "",
+          parsed.executiveSummary ||
+          "",
+
         keyPoints:
-          parsed.keyPoints || [],
+          Array.isArray(
+            parsed.keyPoints
+          )
+            ? parsed.keyPoints
+            : [],
+
         actionItems:
-          parsed.actionItems || [],
+          Array.isArray(
+            parsed.actionItems
+          )
+            ? parsed.actionItems
+            : [],
+
         suggestedQuestions:
-          parsed.suggestedQuestions || [],
-        readingTimeMinutes: readingTime,
-        wordCount: summaryWords,
-        originalWordCount: originalWords,
-        reductionPercentage: reductionPct,
+          Array.isArray(
+            parsed.suggestedQuestions
+          )
+            ? parsed.suggestedQuestions
+            : [],
+
+        readingTimeMinutes:
+          Math.max(
+            1,
+            Math.ceil(
+              summaryWords / 200
+            )
+          ),
+
+        wordCount:
+          summaryWords,
+
+        originalWordCount:
+          originalWords,
+
+        reductionPercentage,
       });
     } catch (error: any) {
       console.error(
-        "Groq Summarize API Error:",
+        "Groq Summarize Error:",
         error
       );
 
@@ -373,18 +570,19 @@ Requirements:
           ? error.status
           : 500
       ).json({
-        error: errorMessage(
-          error,
-          "Failed to generate summary."
-        ),
+        error:
+          errorMessage(
+            error,
+            "Failed to generate summary."
+          ),
       });
     }
   }
 );
 
-/* ==========================================
-   2. ANALYZE
-========================================== */
+/* =========================================================
+   2. DOCUMENT ANALYSIS
+========================================================= */
 
 app.post(
   "/api/groq/analyze",
@@ -394,44 +592,65 @@ app.post(
   ): Promise<void> => {
     try {
       const {
-        text,
+        text = "",
         imagePart,
       } = req.body;
 
-      if (!text && !imagePart) {
+      if (
+        !text &&
+        !imagePart
+      ) {
         res.status(400).json({
           error:
             "Please provide text or an attachment to analyze.",
         });
+
         return;
       }
 
-      const words = countWords(text || "");
-
       const prompt = `
-You are an expert linguistic analyst, strategic editor, and productivity coach.
+You are an expert document analyst.
 
-Perform a comprehensive analysis of the following content.
+Analyze this content carefully.
 
-INPUT CONTENT:
+INPUT:
 """
 ${text || "(See attached image)"}
 """
 
-Analyze:
+Return ONLY valid JSON using this structure:
 
-1. Overall tone
-2. Sentiment
-3. Sentiment score from 0 to 100
-4. Readability level
-5. Key topics
-6. Named entities
-7. Action items
-8. Strengths
-9. Suggestions
-10. Strategic insights
-
-Return only valid JSON matching the schema.
+{
+  "overallTone": "string",
+  "sentiment": "positive/negative/neutral",
+  "sentimentScore": 0,
+  "readabilityLevel": "string",
+  "keyTopics": [],
+  "entities": [
+    {
+      "name": "string",
+      "type": "string",
+      "description": "string"
+    }
+  ],
+  "actionItems": [
+    {
+      "task": "string",
+      "priority": "high/medium/low",
+      "owner": "string"
+    }
+  ],
+  "strengths": [],
+  "suggestions": [
+    {
+      "original": "string",
+      "suggested": "string",
+      "explanation": "string",
+      "type": "string"
+    }
+  ],
+  "insights": "string"
+}
 `;
 
       const content: any[] = [
@@ -441,18 +660,25 @@ Return only valid JSON matching the schema.
         },
       ];
 
-      let model = GROQ_MODEL;
-      let strict = true;
+      let model =
+        GROQ_MODEL;
+
+      let jsonMode =
+        true;
 
       if (
         imagePart?.data &&
         imagePart?.mimeType
       ) {
-        model = GROQ_VISION_MODEL;
-        strict = false;
+        model =
+          GROQ_VISION_MODEL;
+
+        jsonMode =
+          false;
 
         content.push({
           type: "image_url",
+
           image_url: {
             url: dataUrl(
               imagePart.mimeType,
@@ -462,157 +688,51 @@ Return only valid JSON matching the schema.
         });
       }
 
-      const response = await groqRequest(
-        [
-          {
-            role: "system",
-            content:
-              "You are a precise document analysis assistant. Return only JSON.",
-          },
-          {
-            role: "user",
-            content,
-          },
-        ],
-        {
-          model,
-          jsonSchema: jsonSchemaResponse(
-            "document_analysis",
+      const response =
+        await groqRequest(
+          [
             {
-              type: "object",
-              properties: {
-                overallTone: {
-                  type: "string",
-                },
-                sentiment: {
-                  type: "string",
-                },
-                sentimentScore: {
-                  type: "integer",
-                },
-                readabilityLevel: {
-                  type: "string",
-                },
-                keyTopics: {
-                  type: "array",
-                  items: {
-                    type: "string",
-                  },
-                },
-                entities: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      name: {
-                        type: "string",
-                      },
-                      type: {
-                        type: "string",
-                      },
-                      description: {
-                        type: "string",
-                      },
-                    },
-                    required: [
-                      "name",
-                      "type",
-                      "description",
-                    ],
-                    additionalProperties: false,
-                  },
-                },
-                actionItems: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      task: {
-                        type: "string",
-                      },
-                      priority: {
-                        type: "string",
-                      },
-                      owner: {
-                        type: "string",
-                      },
-                    },
-                    required: [
-                      "task",
-                      "priority",
-                      "owner",
-                    ],
-                    additionalProperties: false,
-                  },
-                },
-                strengths: {
-                  type: "array",
-                  items: {
-                    type: "string",
-                  },
-                },
-                suggestions: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      original: {
-                        type: "string",
-                      },
-                      suggested: {
-                        type: "string",
-                      },
-                      explanation: {
-                        type: "string",
-                      },
-                      type: {
-                        type: "string",
-                      },
-                    },
-                    required: [
-                      "original",
-                      "suggested",
-                      "explanation",
-                      "type",
-                    ],
-                    additionalProperties: false,
-                  },
-                },
-                insights: {
-                  type: "string",
-                },
-              },
-              required: [
-                "overallTone",
-                "sentiment",
-                "sentimentScore",
-                "readabilityLevel",
-                "keyTopics",
-                "entities",
-                "actionItems",
-                "strengths",
-                "suggestions",
-                "insights",
-              ],
-              additionalProperties: false,
-            },
-            strict
-          ),
-          temperature: 0.2,
-          maxCompletionTokens: 5000,
-        }
-      );
+              role: "system",
 
-      const parsed = parseJson(
-        response.text
-      );
+              content:
+                "You are a professional document analysis assistant. Return valid JSON only.",
+            },
+
+            {
+              role: "user",
+
+              content,
+            },
+          ],
+          {
+            model,
+
+            temperature:
+              0.2,
+
+            maxCompletionTokens:
+              5000,
+
+            jsonMode,
+          }
+        );
+
+      const parsed =
+        parseJson(
+          response.text
+        );
+
+      const words =
+        countWords(text);
 
       res.json({
         overallTone:
-          parsed.overallTone || "Neutral",
+          parsed.overallTone ||
+          "Neutral",
 
         sentiment:
-          parsed.sentiment || "neutral",
+          parsed.sentiment ||
+          "neutral",
 
         sentimentScore:
           typeof parsed.sentimentScore ===
@@ -624,10 +744,13 @@ Return only valid JSON matching the schema.
           parsed.readabilityLevel ||
           "Standard",
 
-        readingTimeMinutes: Math.max(
-          1,
-          Math.ceil(words / 200)
-        ),
+        readingTimeMinutes:
+          Math.max(
+            1,
+            Math.ceil(
+              words / 200
+            )
+          ),
 
         keyTopics:
           parsed.keyTopics || [],
@@ -636,20 +759,24 @@ Return only valid JSON matching the schema.
           parsed.entities || [],
 
         actionItems:
-          parsed.actionItems || [],
+          parsed.actionItems ||
+          [],
 
         strengths:
-          parsed.strengths || [],
+          parsed.strengths ||
+          [],
 
         suggestions:
-          parsed.suggestions || [],
+          parsed.suggestions ||
+          [],
 
         insights:
-          parsed.insights || "",
+          parsed.insights ||
+          "",
       });
     } catch (error: any) {
       console.error(
-        "Groq Analyze API Error:",
+        "Groq Analyze Error:",
         error
       );
 
@@ -658,18 +785,19 @@ Return only valid JSON matching the schema.
           ? error.status
           : 500
       ).json({
-        error: errorMessage(
-          error,
-          "Failed to analyze document."
-        ),
+        error:
+          errorMessage(
+            error,
+            "Failed to analyze document."
+          ),
       });
     }
   }
 );
 
-/* ==========================================
+/* =========================================================
    3. CONTENT GENERATION
-========================================== */
+========================================================= */
 
 app.post(
   "/api/groq/generate",
@@ -679,23 +807,33 @@ app.post(
   ): Promise<void> => {
     try {
       const {
-        template = "email",
-        topic,
+        template =
+          "email",
+
+        topic = "",
+
         keyPoints = "",
-        tone = "professional",
-        length = "standard",
-        audience = "General",
+
+        tone =
+          "professional",
+
+        length =
+          "standard",
+
+        audience =
+          "General",
       } = req.body;
 
-      if (!topic) {
+      if (!topic?.trim()) {
         res.status(400).json({
           error:
             "Please provide a topic or prompt for content generation.",
         });
+
         return;
       }
 
-      const templateInstructions: Record<
+      const instructions: Record<
         string,
         string
       > = {
@@ -721,107 +859,102 @@ app.post(
           "Provide clean robust code with explanation and usage example.",
 
         freeform:
-          "Generate high-quality formatted content according to the instructions.",
+          "Generate high-quality content according to the provided instructions.",
       };
 
       const instruction =
-        templateInstructions[template] ||
-        templateInstructions.freeform;
+        instructions[
+          template
+        ] ||
+        instructions.freeform;
 
       const prompt = `
-You are an elite productivity copywriter and subject matter expert.
+You are an elite professional content generation assistant.
 
-Task:
+TASK:
 ${instruction}
 
-PARAMETERS:
-
-Primary Topic:
+PRIMARY TOPIC:
 ${topic}
 
-Key Points:
-${keyPoints || "Use best industry practices"}
+KEY POINTS:
+${keyPoints || "Use appropriate industry best practices."}
 
-Tone:
+TONE:
 ${tone}
 
-Length:
+LENGTH:
 ${length}
 
-Target Audience:
+TARGET AUDIENCE:
 ${audience}
 
-Return JSON containing:
+Return ONLY valid JSON:
 
-- title
-- content
-- tags
-- tips
-- estimatedReadingTime
+{
+  "title": "string",
+  "content": "string",
+  "tags": ["string"],
+  "tips": ["string"],
+  "estimatedReadingTime": "string"
+}
 `;
 
-      const response = await groqRequest(
-        [
-          {
-            role: "system",
-            content:
-              "You are a precise content generation assistant. Return only JSON.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        {
-          jsonSchema:
-            jsonSchemaResponse(
-              "generated_content",
-              {
-                type: "object",
-                properties: {
-                  title: {
-                    type: "string",
-                  },
-                  content: {
-                    type: "string",
-                  },
-                  tags: {
-                    type: "array",
-                    items: {
-                      type: "string",
-                    },
-                  },
-                  tips: {
-                    type: "array",
-                    items: {
-                      type: "string",
-                    },
-                  },
-                  estimatedReadingTime: {
-                    type: "string",
-                  },
-                },
-                required: [
-                  "title",
-                  "content",
-                  "tags",
-                  "tips",
-                  "estimatedReadingTime",
-                ],
-                additionalProperties: false,
-              }
-            ),
-          temperature: 0.5,
-          maxCompletionTokens: 5000,
-        }
-      );
+      const response =
+        await groqRequest(
+          [
+            {
+              role: "system",
 
-      res.json(
-        parseJson(response.text)
-      );
+              content:
+                "You are a precise professional content generator. Return valid JSON only.",
+            },
+
+            {
+              role: "user",
+
+              content: prompt,
+            },
+          ],
+          {
+            temperature:
+              0.5,
+
+            maxCompletionTokens:
+              5000,
+
+            jsonMode:
+              true,
+          }
+        );
+
+      const result =
+        parseJson(
+          response.text
+        );
+
+      res.json({
+        title:
+          result.title ||
+          "Generated Content",
+
+        content:
+          result.content ||
+          "",
+
+        tags:
+          result.tags || [],
+
+        tips:
+          result.tips || [],
+
+        estimatedReadingTime:
+          result.estimatedReadingTime ||
+          "2 minutes",
+      });
     } catch (error: any) {
       console.error(
-        "Groq Generate API Error:",
+        "Groq Generate Error:",
         error
       );
 
@@ -830,18 +963,19 @@ Return JSON containing:
           ? error.status
           : 500
       ).json({
-        error: errorMessage(
-          error,
-          "Failed to generate content."
-        ),
+        error:
+          errorMessage(
+            error,
+            "Failed to generate content."
+          ),
       });
     }
   }
 );
 
-/* ==========================================
-   4. Q&A
-========================================== */
+/* =========================================================
+   4. QUESTION ANSWERING
+========================================================= */
 
 app.post(
   "/api/groq/qa",
@@ -851,26 +985,31 @@ app.post(
   ): Promise<void> => {
     try {
       const {
-        question,
+        question = "",
+
         history = [],
+
         contextDocument = "",
-        persona = "smart_assistant",
+
+        persona =
+          "smart_assistant",
       } = req.body;
 
-      if (!question) {
+      if (!question?.trim()) {
         res.status(400).json({
           error:
             "Please provide a question or message.",
         });
+
         return;
       }
 
-      const personaInstructions: Record<
+      const personas: Record<
         string,
         string
       > = {
         smart_assistant:
-          "You are the AI Smart Assistant: concise, knowledgeable, actionable and polite.",
+          "You are the AI Smart Assistant. Be concise, knowledgeable, actionable and polite.",
 
         tech_lead:
           "You are a Senior Principal Software Architect. Give technical depth, trade-offs and best practices.",
@@ -885,50 +1024,66 @@ app.post(
           "You are a Master Copy Editor. Focus on grammar, clarity and persuasive writing.",
       };
 
-      const systemInstruction =
-        (personaInstructions[persona] ||
-          personaInstructions.smart_assistant) +
-        `
+      const messages: GroqMessage[] =
+        [
+          {
+            role: "system",
 
-Always format responses using clean Markdown.
+            content: `
+${
+  personas[
+    persona
+  ] ||
+  personas.smart_assistant
+}
+
+Always answer using clean Markdown.
 
 At the end provide:
 
 ### Suggested Follow-ups
 
-with 2-3 useful follow-up questions.`;
+Give 2-3 useful follow-up questions.
+`,
+          },
+        ];
 
-      const messages: GroqMessage[] = [
-        {
-          role: "system",
-          content: systemInstruction,
-        },
-      ];
-
-      for (
-        const msg of Array.isArray(history)
-          ? history.slice(-6)
-          : []
+      if (
+        Array.isArray(history)
       ) {
-        if (!msg?.content) continue;
+        for (
+          const message of history.slice(
+            -8
+          )
+        ) {
+          if (
+            !message?.content
+          ) {
+            continue;
+          }
 
-        messages.push({
-          role:
-            msg.role === "assistant"
-              ? "assistant"
-              : "user",
-          content: String(msg.content),
-        });
+          messages.push({
+            role:
+              message.role ===
+              "assistant"
+                ? "assistant"
+                : "user",
+
+            content:
+              String(
+                message.content
+              ),
+          });
+        }
       }
 
       let userPrompt = "";
 
       if (
-        contextDocument &&
-        contextDocument.trim()
+        contextDocument?.trim()
       ) {
         userPrompt += `
-REFERENCE CONTEXT DOCUMENT:
+REFERENCE DOCUMENT:
 
 """
 ${contextDocument}
@@ -939,92 +1094,118 @@ ${contextDocument}
 
       userPrompt += `
 USER QUESTION:
+
 ${question}
 `;
 
       messages.push({
         role: "user",
-        content: userPrompt,
+
+        content:
+          userPrompt,
       });
 
       const response =
-        await groqRequest(messages, {
-          temperature: 0.4,
-          maxCompletionTokens: 5000,
-        });
+        await groqRequest(
+          messages,
+          {
+            temperature:
+              0.4,
+
+            maxCompletionTokens:
+              5000,
+          }
+        );
 
       const fullText =
         response.text || "";
 
-      let cleanedContent =
-        fullText;
-
-      const followUps: string[] = [];
-
-      const followUpMarker =
+      const marker =
         fullText.lastIndexOf(
           "### Suggested Follow-ups"
         );
 
-      if (followUpMarker !== -1) {
-        cleanedContent =
+      let content =
+        fullText;
+
+      const followUps: string[] =
+        [];
+
+      if (marker !== -1) {
+        content =
           fullText
             .substring(
               0,
-              followUpMarker
+              marker
             )
             .trim();
 
-        const followUpSection =
+        const followUpText =
           fullText.substring(
-            followUpMarker
+            marker
           );
 
-        const lines =
-          followUpSection.split("\n");
-
-        for (const line of lines) {
-          const trimmed = line
-            .replace(
-              /^[-*•\d.]+\s*/,
-              ""
-            )
-            .trim();
+        for (
+          const line of followUpText.split(
+            "\n"
+          )
+        ) {
+          const clean =
+            line
+              .replace(
+                /^[-*•\d.]+\s*/,
+                ""
+              )
+              .trim();
 
           if (
-            trimmed &&
-            !trimmed.startsWith("#") &&
-            trimmed.length > 5
+            clean &&
+            !clean.startsWith(
+              "#"
+            ) &&
+            clean.length > 5
           ) {
-            followUps.push(trimmed);
+            followUps.push(
+              clean
+            );
           }
         }
       }
 
-      if (followUps.length === 0) {
+      if (
+        followUps.length === 0
+      ) {
         followUps.push(
-          "Can you elaborate on the key points?",
+          "Can you explain the key points further?",
           "What are the practical next steps?",
-          "Can you simplify this for a non-technical audience?"
+          "Can you simplify this?"
         );
       }
 
       res.json({
-        content: cleanedContent,
+        content,
+
         suggestedFollowUps:
-          followUps.slice(0, 3),
+          followUps.slice(
+            0,
+            3
+          ),
+
         timestamp:
           new Date().toLocaleTimeString(
             [],
             {
-              hour: "2-digit",
-              minute: "2-digit",
+              hour:
+                "2-digit",
+
+              minute:
+                "2-digit",
             }
           ),
       });
     } catch (error: any) {
       console.error(
-        "Groq Q&A API Error:",
+        "Groq Q&A Error:",
         error
       );
 
@@ -1033,18 +1214,19 @@ ${question}
           ? error.status
           : 500
       ).json({
-        error: errorMessage(
-          error,
-          "Failed to process question."
-        ),
+        error:
+          errorMessage(
+            error,
+            "Failed to process question."
+          ),
       });
     }
   }
 );
 
-/* ==========================================
+/* =========================================================
    5. QUICK TRANSFORM
-========================================== */
+========================================================= */
 
 app.post(
   "/api/groq/transform",
@@ -1054,19 +1236,20 @@ app.post(
   ): Promise<void> => {
     try {
       const {
-        text,
-        action,
+        text = "",
+        action = "",
       } = req.body;
 
-      if (!text) {
+      if (!text?.trim()) {
         res.status(400).json({
           error:
             "Please provide text to transform.",
         });
+
         return;
       }
 
-      const actionPrompts: Record<
+      const actions: Record<
         string,
         string
       > = {
@@ -1102,7 +1285,7 @@ app.post(
       };
 
       const instruction =
-        actionPrompts[action] ||
+        actions[action] ||
         "Improve and polish this text.";
 
       const prompt = `
@@ -1115,7 +1298,7 @@ ORIGINAL TEXT:
 ${text}
 """
 
-Provide the transformed result in clean Markdown.
+Return only the transformed result in clean Markdown.
 `;
 
       const response =
@@ -1123,17 +1306,24 @@ Provide the transformed result in clean Markdown.
           [
             {
               role: "system",
+
               content:
                 "You are a precise text transformation assistant.",
             },
+
             {
               role: "user",
-              content: prompt,
+
+              content:
+                prompt,
             },
           ],
           {
-            temperature: 0.3,
-            maxCompletionTokens: 5000,
+            temperature:
+              0.3,
+
+            maxCompletionTokens:
+              5000,
           }
         );
 
@@ -1144,14 +1334,18 @@ Provide the transformed result in clean Markdown.
         action,
 
         originalWordCount:
-          countWords(text),
+          countWords(
+            text
+          ),
 
         transformedWordCount:
-          countWords(response.text),
+          countWords(
+            response.text
+          ),
       });
     } catch (error: any) {
       console.error(
-        "Groq Transform API Error:",
+        "Groq Transform Error:",
         error
       );
 
@@ -1160,18 +1354,19 @@ Provide the transformed result in clean Markdown.
           ? error.status
           : 500
       ).json({
-        error: errorMessage(
-          error,
-          "Failed to transform text."
-        ),
+        error:
+          errorMessage(
+            error,
+            "Failed to transform text."
+          ),
       });
     }
   }
 );
 
-/* ==========================================
+/* =========================================================
    6. CAREER MATCH
-========================================== */
+========================================================= */
 
 app.post(
   "/api/groq/career-match",
@@ -1181,16 +1376,21 @@ app.post(
   ): Promise<void> => {
     try {
       const {
-        jobDescription,
+        jobDescription = "",
+
         profile = "",
+
         file,
       } = req.body;
 
-      if (!jobDescription?.trim()) {
+      if (
+        !jobDescription?.trim()
+      ) {
         res.status(400).json({
           error:
             "Please provide a job or internship description.",
         });
+
         return;
       }
 
@@ -1202,18 +1402,24 @@ app.post(
           error:
             "Please provide a candidate profile or upload a file.",
         });
+
         return;
       }
 
-      let extractedText = "";
-      let projectEvidence = "";
+      let extractedText =
+        "";
+
+      let projectEvidence =
+        "";
 
       if (
         file?.data &&
         file?.name
       ) {
         extractedText =
-          await extractCareerFile(file);
+          await extractCareerFile(
+            file
+          );
 
         if (
           file.name
@@ -1227,43 +1433,59 @@ app.post(
 
           projectEvidence = [
             `Languages: ${
-              [...evidence.languages]
-                .join(", ") ||
+              [
+                ...evidence.languages,
+              ].join(
+                ", "
+              ) ||
               "None detected"
             }`,
 
             `Frameworks/Libraries: ${
-              [...evidence.frameworks]
-                .join(", ") ||
+              [
+                ...evidence.frameworks,
+              ].join(
+                ", "
+              ) ||
               "None detected"
             }`,
 
             `Technologies: ${
-              [...evidence.technologies]
-                .join(", ") ||
+              [
+                ...evidence.technologies,
+              ].join(
+                ", "
+              ) ||
               "None detected"
             }`,
           ].join("\n");
         }
       }
 
-      const candidateProfile = [
-        profile.trim(),
-        extractedText.trim(),
-      ]
-        .filter(Boolean)
-        .join("\n\n");
+      const candidateProfile =
+        [
+          profile.trim(),
 
-      if (!candidateProfile) {
+          extractedText.trim(),
+        ]
+          .filter(Boolean)
+          .join(
+            "\n\n"
+          );
+
+      if (
+        !candidateProfile
+      ) {
         res.status(400).json({
           error:
             "The uploaded file could not be read. Please upload a text-based PDF, DOCX, TXT, or ZIP file.",
         });
+
         return;
       }
 
       const prompt = `
-You are an AI Career Assistant and hiring analyst.
+You are an expert AI Career Assistant and hiring analyst.
 
 JOB / INTERNSHIP DESCRIPTION:
 
@@ -1273,22 +1495,35 @@ CANDIDATE PROFILE:
 
 ${candidateProfile}
 
-PROJECT EVIDENCE DETECTED FROM UPLOADED CODE:
+PROJECT EVIDENCE:
 
 ${
   projectEvidence ||
-  "No code-project evidence was detected."
+  "No project evidence detected."
 }
 
 RULES:
 
 1. Never invent skills, experience, education, projects or achievements.
-2. Count a skill as matching only when explicitly present.
-3. Keep match percentage realistic.
+2. Match skills only when explicitly present.
+3. Keep the match percentage realistic.
 4. Identify important skill gaps.
-5. Give specific actionable recommendations.
+5. Give specific recommendations.
 6. Create a practical roadmap.
-7. Treat uploaded project evidence as supporting evidence only.
+7. Treat project evidence as supporting evidence.
+
+Return ONLY valid JSON:
+
+{
+  "jobSummary": "string",
+  "requiredSkills": [],
+  "matchingSkills": [],
+  "missingSkills": [],
+  "matchPercentage": 0,
+  "matchReason": "string",
+  "recommendations": [],
+  "roadmap": []
+}
 `;
 
       const response =
@@ -1296,108 +1531,83 @@ RULES:
           [
             {
               role: "system",
+
               content:
-                "You are a rigorous career matching engine. Return only JSON.",
+                "You are a rigorous career matching engine. Return valid JSON only.",
             },
+
             {
               role: "user",
-              content: prompt,
+
+              content:
+                prompt,
             },
           ],
           {
-            jsonSchema:
-              jsonSchemaResponse(
-                "career_analysis",
-                {
-                  type: "object",
+            temperature:
+              0.2,
 
-                  properties: {
-                    jobSummary: {
-                      type: "string",
-                    },
+            maxCompletionTokens:
+              5000,
 
-                    requiredSkills: {
-                      type: "array",
-                      items: {
-                        type: "string",
-                      },
-                    },
-
-                    matchingSkills: {
-                      type: "array",
-                      items: {
-                        type: "string",
-                      },
-                    },
-
-                    missingSkills: {
-                      type: "array",
-                      items: {
-                        type: "string",
-                      },
-                    },
-
-                    matchPercentage: {
-                      type: "integer",
-                    },
-
-                    matchReason: {
-                      type: "string",
-                    },
-
-                    recommendations: {
-                      type: "array",
-                      items: {
-                        type: "string",
-                      },
-                    },
-
-                    roadmap: {
-                      type: "array",
-                      items: {
-                        type: "string",
-                      },
-                    },
-                  },
-
-                  required: [
-                    "jobSummary",
-                    "requiredSkills",
-                    "matchingSkills",
-                    "missingSkills",
-                    "matchPercentage",
-                    "matchReason",
-                    "recommendations",
-                    "roadmap",
-                  ],
-
-                  additionalProperties: false,
-                }
-              ),
-
-            temperature: 0.2,
-            maxCompletionTokens: 5000,
+            jsonMode:
+              true,
           }
         );
 
       const result =
-        parseJson(response.text);
+        parseJson(
+          response.text
+        );
 
       result.matchPercentage =
         Math.max(
           0,
+
           Math.min(
             100,
+
             Number(
               result.matchPercentage
             ) || 0
           )
         );
 
-      res.json(result);
+      res.json({
+        jobSummary:
+          result.jobSummary ||
+          "",
+
+        requiredSkills:
+          result.requiredSkills ||
+          [],
+
+        matchingSkills:
+          result.matchingSkills ||
+          [],
+
+        missingSkills:
+          result.missingSkills ||
+          [],
+
+        matchPercentage:
+          result.matchPercentage,
+
+        matchReason:
+          result.matchReason ||
+          "",
+
+        recommendations:
+          result.recommendations ||
+          [],
+
+        roadmap:
+          result.roadmap ||
+          [],
+      });
     } catch (error: any) {
       console.error(
-        "Groq Career Match API Error:",
+        "Groq Career Match Error:",
         error
       );
 
@@ -1406,18 +1616,19 @@ RULES:
           ? error.status
           : 500
       ).json({
-        error: errorMessage(
-          error,
-          "Failed to generate career analysis."
-        ),
+        error:
+          errorMessage(
+            error,
+            "Failed to generate career analysis."
+          ),
       });
     }
   }
 );
 
-/* ==========================================
+/* =========================================================
    VITE / PRODUCTION
-========================================== */
+========================================================= */
 
 async function startServer() {
   if (
@@ -1427,8 +1638,10 @@ async function startServer() {
     const vite =
       await createViteServer({
         server: {
-          middlewareMode: true,
+          middlewareMode:
+            true,
         },
+
         appType: "spa",
       });
 
@@ -1436,23 +1649,32 @@ async function startServer() {
       vite.middlewares
     );
   } else {
-    const distPath = path.join(
-      process.cwd(),
-      "dist"
-    );
+    const distPath =
+      path.join(
+        process.cwd(),
+        "dist"
+      );
 
     app.use(
-      express.static(distPath)
+      express.static(
+        distPath
+      )
     );
 
-    app.get("*", (req, res) => {
-      res.sendFile(
-        path.join(
-          distPath,
-          "index.html"
-        )
-      );
-    });
+    app.get(
+      "*",
+      (
+        req,
+        res
+      ) => {
+        res.sendFile(
+          path.join(
+            distPath,
+            "index.html"
+          )
+        );
+      }
+    );
   }
 
   app.listen(
@@ -1460,14 +1682,43 @@ async function startServer() {
     "0.0.0.0",
     () => {
       console.log(
-        `\n✨ AI Smart Assistant Server is running with Groq!`
+        "\n✨ AI Smart Assistant Server is running with Groq!"
       );
 
       console.log(
-        `📍 Access it at: http://${HOSTNAME}:${PORT}\n`
+        `📍 Server listening on port ${PORT}`
+      );
+
+      console.log(
+        `🔑 Groq API Key: ${
+          hasGroqKey()
+            ? "CONFIGURED"
+            : "MISSING"
+        }`
+      );
+
+      console.log(
+        `🤖 Model: ${GROQ_MODEL}`
+      );
+
+      console.log(
+        `👁️ Vision Model: ${GROQ_VISION_MODEL}\n`
       );
     }
   );
 }
 
-startServer();
+/* =========================================================
+   START
+========================================================= */
+
+startServer().catch(
+  (error) => {
+    console.error(
+      "❌ Server startup failed:",
+      error
+    );
+
+    process.exit(1);
+  }
+);
